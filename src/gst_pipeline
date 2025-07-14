@@ -1,0 +1,29 @@
+playlistwindow.cpp:        if (active_cue->type == CueItem::Type::Audio)
+playlistwindow.cpp:        else if (active_cue->type == CueItem::Type::Video)
+playlistwindow.cpp:            playback_window->start_video(active_cue->path_or_command);
+playlistwindow.cpp:        else if (active_cue->type == CueItem::Type::Slideshow)
+playlistwindow.cpp:            playback_window->start_slideshow(active_cue->slideshow_images, active_cue->slideshow_interval_seconds);
+playlistwindow.cpp:        else if (active_cue->type == CueItem::Type::Control)
+playlistwindow.cpp:            system(active_cue->path_or_command.c_str());
+playlistwindow.cpp:                if (active_cue->type == CueItem::Type::Audio)
+playlistwindow.cpp:                else if (active_cue->type == CueItem::Type::Video)
+playlistwindow.cpp:                else if (active_cue->type == CueItem::Type::Slideshow)
+playlistwindow.cpp:                    playback_window->start_slideshow(active_cue->slideshow_images, active_cue->slideshow_interval_seconds);
+playlistwindow.cpp:                else if (active_cue->type == CueItem::Type::Control)
+playlistwindow.cpp:                    system(active_cue->path_or_command.c_str());
+playlistwindow.cpp:    if (!active_cue || !active_cue->auto_next)
+playlistwindow.cpp:        if (active_cue && row[cue_columns.name] == active_cue->name && active_cue->gst_pipeline)
+playlistwindow.cpp:            if (gst_element_query_position(active_cue->gst_pipeline, GST_FORMAT_TIME, &pos) &&
+playlistwindow.cpp:                gst_element_query_duration(active_cue->gst_pipeline, GST_FORMAT_TIME, &dur))
+playlistwindow.cpp:    if (active_cue && active_cue->gst_pipeline)
+playlistwindow.cpp:        gst_element_set_state(active_cue->gst_pipeline, GST_STATE_PLAYING);
+playlistwindow.cpp:    if (active_cue && active_cue->gst_pipeline)
+playlistwindow.cpp:        gst_element_set_state(active_cue->gst_pipeline, GST_STATE_PAUSED);
+playlistwindow.cpp:    if (active_cue && active_cue->gst_pipeline)
+playlistwindow.cpp:        gst_element_set_state(active_cue->gst_pipeline, GST_STATE_NULL);
+playlistwindow.cpp:    if (active_cue && active_cue->gst_pipeline)
+playlistwindow.cpp:        g_object_get(active_cue->gst_pipeline, "volume", &volume, nullptr);
+playlistwindow.cpp:        g_object_set(active_cue->gst_pipeline, "volume", volume, nullptr);
+playlistwindow.cpp:    if (active_cue && active_cue->gst_pipeline)
+playlistwindow.cpp:        g_object_get(active_cue->gst_pipeline, "volume", &volume, nullptr);
+playlistwindow.cpp:        g_object_set(active_cue->gst_pipeline, "volume", volume, nullptr);

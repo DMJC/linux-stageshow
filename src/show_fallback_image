@@ -1,0 +1,17 @@
+gst_pipeline:playlistwindow.cpp:            playback_window->start_video(active_cue->path_or_command);
+gst_pipeline:playlistwindow.cpp:            playback_window->start_slideshow(active_cue->slideshow_images, active_cue->slideshow_interval_seconds);
+gst_pipeline:playlistwindow.cpp:                    playback_window->start_slideshow(active_cue->slideshow_images, active_cue->slideshow_interval_seconds);
+playlistwindow.cpp:            playback_window->start_slideshow(active_cue->slideshow_images, active_cue->slideshow_interval_seconds);
+playlistwindow.cpp:        playback_window->show_slide_file(new_file);
+playlistwindow.cpp:        playback_window->show_slide_file(new_file);
+playlistwindow.cpp:            playback_window->slideshow_pause();
+playlistwindow.cpp:            playback_window->slideshow_resume();
+playlistwindow.cpp:        playback_window->slideshow_stop();
+playlistwindow.cpp:        playback_window->show_slide_file(cue->slideshow_images[0]);
+playlistwindow.cpp:            playback_window->pause_audio();
+playlistwindow.cpp:            playback_window->resume_audio();
+playlistwindow.cpp:        playback_window->stop_audio();
+playlistwindow.cpp:        playback_window->stop_audio();
+playlistwindow.cpp:        playback_window->set_video_container_content(*cpp_widget);
+playlistwindow.cpp:                    playback_window->start_slideshow(active_cue->slideshow_images, active_cue->slideshow_interval_seconds);
+playlistwindow.cpp:            playback_window->set_fallback_image(fallback_image_path);
