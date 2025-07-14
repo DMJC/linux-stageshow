@@ -1,4 +1,4 @@
-# linux-stageshow
+# Linux Stageshow
 Event Cueing Software for Linux aimed at Conventions. Inspired by Linux-Show-Player.
 Written in C++ using GTKMM-3.0 and GStreamer. Supports most video and audio codecs as well as image slideshows and Linux/Unix commands.
 
