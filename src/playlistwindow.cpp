@@ -144,25 +144,28 @@ void PlaylistWindow::add_audio_cue()
     if (dlg.run_and_get_result(res)) {
         auto cue = std::make_shared<CueItem>(
             CueItem::Type::Audio,
-                res.name.empty() ? Glib::path_get_basename(res.file_or_command) : res.name,
+            res.name.empty() ? Glib::path_get_basename(res.file_or_command) : res.name,
             res.file_or_command,
             res.prewait_seconds,
             res.postwait_seconds,
             10,
             res.auto_next,
             res.immediate,
-			res.loop_forever,
+            res.loop_forever,
             res.last_frame
         );
         cue_items.push_back(cue);
 
-        // build a new audio control box
-		auto but_play_img = Gtk::make_managed<Gtk::Image>("images/play.png");
-		auto but_pause_img = Gtk::make_managed<Gtk::Image>("images/pause.png");
-		auto but_stop_img = Gtk::make_managed<Gtk::Image>("images/stop.png");
-		auto but_vol_down_img = Gtk::make_managed<Gtk::Image>("images/fade_down.png");
-		auto but_vol_up_img = Gtk::make_managed<Gtk::Image>("images/fade_up.png");
-		auto but_remove_img = Gtk::make_managed<Gtk::Image>("images/close.png");
+        // --- Create control box for cue ---
+        auto control_box = Gtk::make_managed<Gtk::Grid>();
+
+        auto label = Gtk::make_managed<Gtk::Label>("Audio Cue: " + cue->name);
+        auto but_pause_img = Gtk::make_managed<Gtk::Image>("images/pause.png");
+        auto but_stop_img = Gtk::make_managed<Gtk::Image>("images/stop.png");
+        auto but_vol_down_img = Gtk::make_managed<Gtk::Image>("images/fade_down.png");
+        auto but_vol_up_img = Gtk::make_managed<Gtk::Image>("images/fade_up.png");
+        auto but_remove_img = Gtk::make_managed<Gtk::Image>("images/close.png");
+
         auto button_playpause = Gtk::make_managed<Gtk::ToggleButton>();
         auto button_stop = Gtk::make_managed<Gtk::Button>();
         auto button_vol_down = Gtk::make_managed<Gtk::Button>();
@@ -175,42 +178,77 @@ void PlaylistWindow::add_audio_cue()
         button_vol_up->set_image(*but_vol_up_img);
         button_remove->set_image(*but_remove_img);
 
-        // pack buttons
-		auto new_audio_box = Gtk::make_managed<Gtk::Grid>();
-	    new_audio_box->attach(*button_playpause, 1, 0, 1, 1);
-	    new_audio_box->attach(*button_stop,     2, 0, 1, 1);
-	    new_audio_box->attach(*button_remove,   3, 0, 1, 1);
-	    new_audio_box->attach(*button_vol_down, 2, 1, 1, 1);
-	    new_audio_box->attach(*button_vol_up,   3, 1, 1, 1);
+        control_box->attach(*label,             0, 0, 3, 1);
+        control_box->attach(*button_playpause,  0, 1, 1, 1);
+        control_box->attach(*button_stop,       1, 1, 1, 1);
+        control_box->attach(*button_remove,     2, 1, 1, 1);
+        control_box->attach(*button_vol_down,   1, 2, 1, 1);
+        control_box->attach(*button_vol_up,     2, 2, 1, 1);
 
-        // status
-        auto countdown_label = Gtk::make_managed<Gtk::Label>("00:00");
-        auto progress = Gtk::make_managed<Gtk::ProgressBar>();
+        // --- Signal handlers ---
+        button_playpause->signal_toggled().connect([this, cue, button_playpause]() {
+            if (!cue->gst_pipeline)
+                return;
 
-//        new_audio_box->pack_start(*button_box, Gtk::PACK_SHRINK);
-        new_audio_box->attach(*countdown_label, 0, 0, 2, 1);
-        new_audio_box->attach(*progress, 4, 0, 1, 1);
+            if (button_playpause->get_active()) {
+                gst_element_set_state(cue->gst_pipeline, GST_STATE_PAUSED);
+                button_playpause->set_image_from_icon_name("media-playback-start");
+            } else {
+                gst_element_set_state(cue->gst_pipeline, GST_STATE_PLAYING);
+                button_playpause->set_image_from_icon_name("media-playback-pause");
+            }
+        });
 
-        // show
-        new_audio_box->show_all();
+        button_stop->signal_clicked().connect([cue]() {
+            if (cue->gst_pipeline)
+                gst_element_set_state(cue->gst_pipeline, GST_STATE_NULL);
+        });
 
-        // add to stack with unique name
-        auto name = "cue_" + std::to_string(reinterpret_cast<uintptr_t>(cue.get()));
-        cue_controls_stack.add(*new_audio_box, name);
+        button_vol_down->signal_clicked().connect([cue]() {
+            Glib::signal_timeout().connect([cue]() -> bool {
+                gdouble vol = 1.0;
+                g_object_get(cue->gst_pipeline, "volume", &vol, nullptr);
+                vol -= 0.05;
+                if (vol <= 0.0) {
+                    vol = 0.0;
+                    g_object_set(cue->gst_pipeline, "volume", vol, nullptr);
+                    return false;
+                }
+                g_object_set(cue->gst_pipeline, "volume", vol, nullptr);
+                return true;
+            }, 100);
+        });
 
-        // remember
-        cue_control_boxes[cue] = new_audio_box;
+        button_vol_up->signal_clicked().connect([cue]() {
+            Glib::signal_timeout().connect([cue]() -> bool {
+                gdouble vol = 0.0;
+                g_object_get(cue->gst_pipeline, "volume", &vol, nullptr);
+                vol += 0.05;
+                if (vol >= 1.0) {
+                    vol = 1.0;
+                    g_object_set(cue->gst_pipeline, "volume", vol, nullptr);
+                    return false;
+                }
+                g_object_set(cue->gst_pipeline, "volume", vol, nullptr);
+                return true;
+            }, 100);
+        });
 
+        button_remove->signal_clicked().connect([this, cue]() {
+            remove_cue(cue);
+        });
+
+        control_box->show_all();
+        per_cue_controls_box.pack_start(*control_box, Gtk::PACK_SHRINK);
+        cue_control_boxes[cue] = control_box;
+
+        // Add to model
         auto row = *(cue_store->append());
         row[cue_columns.name] = cue->name;
-        row[cue_columns.prewait] = Glib::ustring::format(
-            res.prewait_seconds / 60, ":", res.prewait_seconds % 60
-        );
-		row[cue_columns.action_text] = get_media_duration_hms(cue->path_or_command);
+        row[cue_columns.prewait] = Glib::ustring::format(res.prewait_seconds / 60, ":", res.prewait_seconds % 60);
+        row[cue_columns.action_text] = get_media_duration_hms(cue->path_or_command);
         row[cue_columns.action_progress] = 0;
-        row[cue_columns.postwait] = Glib::ustring::format(
-            res.postwait_seconds / 60, ":", res.postwait_seconds % 60
-        );
+        row[cue_columns.postwait] = Glib::ustring::format(res.postwait_seconds / 60, ":", res.postwait_seconds % 60);
     }
 }
 
@@ -218,62 +256,212 @@ void PlaylistWindow::add_video_cue()
 {
     CuePropertiesDialog dlg(*this, CuePropertiesDialog::CueType::Video);
     CuePropertiesDialog::Result res;
-    if (dlg.run_and_get_result(res)) {
-        auto cue = std::make_shared<CueItem>(
-            CueItem::Type::Video,
-            Glib::path_get_basename(res.file_or_command),
-            res.file_or_command,
-            res.prewait_seconds,
-            res.postwait_seconds,
-            10,
-            res.auto_next,
-            res.immediate,
-			res.loop_forever,
-            res.last_frame
-        );
-        cue_items.push_back(cue);
+    if (!dlg.run_and_get_result(res))
+        return;
 
-        auto row = *(cue_store->append());
-        row[cue_columns.name] = cue->name;
-        row[cue_columns.prewait] = Glib::ustring::format(
-            res.prewait_seconds / 60, ":", res.prewait_seconds % 60
-        );
-		row[cue_columns.action_text] = get_media_duration_hms(cue->path_or_command);
-        row[cue_columns.action_progress] = 0;
-        row[cue_columns.postwait] = Glib::ustring::format(
-            res.postwait_seconds / 60, ":", res.postwait_seconds % 60
-        );
-    }
+    auto cue = std::make_shared<CueItem>(
+        CueItem::Type::Video,
+        Glib::path_get_basename(res.file_or_command),
+        res.file_or_command,
+        res.prewait_seconds,
+        res.postwait_seconds,
+        10,
+        res.auto_next,
+        res.immediate,
+        res.loop_forever,
+        res.last_frame
+    );
+    cue_items.push_back(cue);
+
+    // Create control box
+    auto control_box = Gtk::make_managed<Gtk::Grid>();
+
+    auto label = Gtk::make_managed<Gtk::Label>("Video Cue: " + cue->name);
+    auto but_pause_img = Gtk::make_managed<Gtk::Image>("images/pause.png");
+    auto but_stop_img = Gtk::make_managed<Gtk::Image>("images/stop.png");
+    auto but_vol_down_img = Gtk::make_managed<Gtk::Image>("images/fade_down.png");
+    auto but_vol_up_img = Gtk::make_managed<Gtk::Image>("images/fade_up.png");
+    auto but_remove_img = Gtk::make_managed<Gtk::Image>("images/close.png");
+
+    auto button_playpause = Gtk::make_managed<Gtk::ToggleButton>();
+    auto button_stop = Gtk::make_managed<Gtk::Button>();
+    auto button_vol_down = Gtk::make_managed<Gtk::Button>();
+    auto button_vol_up = Gtk::make_managed<Gtk::Button>();
+    auto button_remove = Gtk::make_managed<Gtk::Button>();
+
+    button_playpause->set_image(*but_pause_img);
+    button_stop->set_image(*but_stop_img);
+    button_vol_down->set_image(*but_vol_down_img);
+    button_vol_up->set_image(*but_vol_up_img);
+    button_remove->set_image(*but_remove_img);
+
+    control_box->attach(*label,             0, 0, 3, 1);
+    control_box->attach(*button_playpause,  0, 1, 1, 1);
+    control_box->attach(*button_stop,       1, 1, 1, 1);
+    control_box->attach(*button_remove,     2, 1, 1, 1);
+    control_box->attach(*button_vol_down,   1, 2, 1, 1);
+    control_box->attach(*button_vol_up,     2, 2, 1, 1);
+
+    // Signal handlers
+    button_playpause->signal_toggled().connect([this, cue, button_playpause]() {
+        if (!cue->gst_pipeline)
+            return;
+
+        if (button_playpause->get_active()) {
+            gst_element_set_state(cue->gst_pipeline, GST_STATE_PAUSED);
+            button_playpause->set_image_from_icon_name("media-playback-start");
+        } else {
+            gst_element_set_state(cue->gst_pipeline, GST_STATE_PLAYING);
+            button_playpause->set_image_from_icon_name("media-playback-pause");
+        }
+    });
+
+    button_stop->signal_clicked().connect([this]() {
+        playback_window->stop_audio();  // This seems like a misnamed method
+    });
+
+    button_vol_down->signal_clicked().connect([cue]() {
+        Glib::signal_timeout().connect([cue]() -> bool {
+            gdouble vol = 1.0;
+            g_object_get(cue->gst_pipeline, "volume", &vol, nullptr);
+            vol = std::max(0.0, vol - 0.05);
+            g_object_set(cue->gst_pipeline, "volume", vol, nullptr);
+            return vol > 0.0;
+        }, 100);
+    });
+
+    button_vol_up->signal_clicked().connect([cue]() {
+        Glib::signal_timeout().connect([cue]() -> bool {
+            gdouble vol = 0.0;
+            g_object_get(cue->gst_pipeline, "volume", &vol, nullptr);
+            vol = std::min(1.0, vol + 0.05);
+            g_object_set(cue->gst_pipeline, "volume", vol, nullptr);
+            return vol < 1.0;
+        }, 100);
+    });
+
+    button_remove->signal_clicked().connect([this, cue]() {
+        remove_cue(cue);
+    });
+
+    control_box->show_all();
+    per_cue_controls_box.pack_start(*control_box, Gtk::PACK_SHRINK);
+    cue_control_boxes[cue] = control_box;
+
+    // Add to model
+    auto row = *(cue_store->append());
+    row[cue_columns.name] = cue->name;
+    row[cue_columns.prewait] = Glib::ustring::format(res.prewait_seconds / 60, ":", res.prewait_seconds % 60);
+    row[cue_columns.action_text] = get_media_duration_hms(cue->path_or_command);
+    row[cue_columns.action_progress] = 0;
+    row[cue_columns.postwait] = Glib::ustring::format(res.postwait_seconds / 60, ":", res.postwait_seconds % 60);
 }
 
-void PlaylistWindow::add_slideshow_cue() {
-        CuePropertiesDialog dlg(*this, CuePropertiesDialog::CueType::Slideshow);
+void PlaylistWindow::add_slideshow_cue()
+{
+    CuePropertiesDialog dlg(*this, CuePropertiesDialog::CueType::Slideshow);
     CuePropertiesDialog::Result res;
-    if (dlg.run_and_get_result(res))
-    {
-        auto cue = std::make_shared<CueItem>(
-            CueItem::Type::Slideshow,
-            res.name.empty() ? "Slideshow" : res.name,
-            res.slideshow_files.empty() ? "" : res.slideshow_files.front(),  // first image as placeholder
-            res.prewait_seconds,
-            res.postwait_seconds,
-            10,
-            res.auto_next,
-            res.immediate,
-			res.loop_forever,
-            res.last_frame
-        );
-    
-        // store full list of slides
-        cue->slideshow_images = res.slideshow_files;
-    
-        cue_items.push_back(cue);
-    
-        auto row = *(cue_store->append());
-        row[cue_columns.name] = cue->name;
-        row[cue_columns.prewait] = Glib::ustring::format(cue->prewait / 60, ":", cue->prewait % 60);
-        row[cue_columns.postwait] = Glib::ustring::format(cue->postwait / 60, ":", cue->postwait % 60);
-    }
+    if (!dlg.run_and_get_result(res))
+        return;
+
+    auto cue = std::make_shared<CueItem>(
+        CueItem::Type::Slideshow,
+        res.name.empty() ? "Slideshow" : res.name,
+        res.slideshow_files.empty() ? "" : res.slideshow_files.front(),
+        res.prewait_seconds,
+        res.postwait_seconds,
+        10,
+        res.auto_next,
+        res.immediate,
+        res.loop_forever,
+        res.last_frame
+    );
+
+    cue->slideshow_images = res.slideshow_files;
+    cue_items.push_back(cue);
+
+    // Create UI
+    auto control_box = Gtk::make_managed<Gtk::Grid>();
+    auto label = Gtk::make_managed<Gtk::Label>("Slideshow: " + cue->name);
+    auto label_slide = Gtk::make_managed<Gtk::Label>();
+
+    auto current_index = std::make_shared<int>(0);
+    if (!cue->slideshow_images.empty())
+        label_slide->set_text(cue->slideshow_images[*current_index]);
+    else
+        label_slide->set_text("(No slides)");
+
+    // Images
+    auto but_next_img = Gtk::make_managed<Gtk::Image>("images/fwd.png");
+    auto but_play_img = Gtk::make_managed<Gtk::Image>("images/play.png");
+    auto but_pause_img = Gtk::make_managed<Gtk::Image>("images/pause.png");
+    auto but_prev_img = Gtk::make_managed<Gtk::Image>("images/prev.png");
+    auto but_remove_img = Gtk::make_managed<Gtk::Image>("images/close.png");
+
+    // Buttons
+    auto button_next = Gtk::make_managed<Gtk::Button>();
+    auto button_prev = Gtk::make_managed<Gtk::Button>();
+    auto button_playpause = Gtk::make_managed<Gtk::ToggleButton>();
+    auto button_remove = Gtk::make_managed<Gtk::Button>();
+
+    button_next->set_image(*but_next_img);
+    button_prev->set_image(*but_prev_img);
+    button_playpause->set_image(*but_pause_img);
+    button_remove->set_image(*but_remove_img);
+
+    control_box->attach(*label,           0, 0, 4, 1);
+    control_box->attach(*label_slide,     0, 1, 4, 1);
+    control_box->attach(*button_prev,     0, 2, 1, 1);
+    control_box->attach(*button_playpause,1, 2, 1, 1);
+    control_box->attach(*button_next,     2, 2, 1, 1);
+    control_box->attach(*button_remove,   3, 2, 1, 1);
+
+    // Signals
+    button_next->signal_clicked().connect([this, cue, current_index, label_slide]() {
+        (*current_index)++;
+        if (*current_index >= static_cast<int>(cue->slideshow_images.size()))
+            *current_index = 0;
+
+        auto new_file = cue->slideshow_images[*current_index];
+        label_slide->set_text(new_file);
+        playback_window->show_slide_file(new_file);
+    });
+
+    button_prev->signal_clicked().connect([this, cue, current_index, label_slide]() {
+        (*current_index)--;
+        if (*current_index < 0)
+            *current_index = cue->slideshow_images.size() - 1;
+
+        auto new_file = cue->slideshow_images[*current_index];
+        label_slide->set_text(new_file);
+        playback_window->show_slide_file(new_file);
+    });
+
+    button_playpause->signal_toggled().connect([this, button_playpause]() {
+        if (button_playpause->get_active()) {
+            playback_window->slideshow_pause();
+            button_playpause->set_image_from_icon_name("media-playback-start");
+        } else {
+            playback_window->slideshow_resume();
+            button_playpause->set_image_from_icon_name("media-playback-pause");
+        }
+    });
+
+    button_remove->signal_clicked().connect([this, cue]() {
+        remove_cue(cue);
+    });
+
+    control_box->show_all();
+    per_cue_controls_box.pack_start(*control_box, Gtk::PACK_SHRINK);
+    cue_control_boxes[cue] = control_box;
+
+    // Add to model
+    auto row = *(cue_store->append());
+    row[cue_columns.name] = cue->name;
+    row[cue_columns.prewait] = Glib::ustring::format(cue->prewait / 60, ":", cue->prewait % 60);
+    row[cue_columns.action_text] = "Slideshow";
+    row[cue_columns.action_progress] = 0;
+    row[cue_columns.postwait] = Glib::ustring::format(cue->postwait / 60, ":", cue->postwait % 60);
 }
 
 void PlaylistWindow::add_control_cue() {
@@ -365,221 +553,73 @@ void PlaylistWindow::set_active_cue(std::shared_ptr<CueItem> cue) {
 
 void PlaylistWindow::start_slideshow_cue(std::shared_ptr<CueItem> cue)
 {
-    auto control_box = Gtk::make_managed<Gtk::Grid>();
-    auto current_index = std::make_shared<int>(0);
+    if (!cue || cue->slideshow_images.empty())
+        return;
 
-    auto label = Gtk::make_managed<Gtk::Label>("Slideshow: " + cue->name);
-    auto label_slide = Gtk::make_managed<Gtk::Label>();
-
-    if (!cue->slideshow_images.empty())
-        label_slide->set_text(cue->slideshow_images[*current_index]);
-    else
-        label_slide->set_text("(No slides)");
-
-	auto but_next_img = Gtk::make_managed<Gtk::Image>("images/fwd.png");
-	auto but_play_img = Gtk::make_managed<Gtk::Image>("images/play.png");
-	auto but_pause_img = Gtk::make_managed<Gtk::Image>("images/pause.png");
-	auto but_prev_img = Gtk::make_managed<Gtk::Image>("images/prev.png");
-	auto but_remove_img = Gtk::make_managed<Gtk::Image>("images/close.png");
-
-    auto button_next = Gtk::make_managed<Gtk::Button>();
-    auto button_prev = Gtk::make_managed<Gtk::Button>();
-    auto button_playpause = Gtk::make_managed<Gtk::ToggleButton>();
-    auto button_remove = Gtk::make_managed<Gtk::Button>();
-
-	button_remove->set_image(*but_remove_img);
-	button_playpause->set_image(*but_pause_img);
-	button_prev->set_image(*but_prev_img);
-	button_next->set_image(*but_next_img);
-
-	control_box->attach(*label, 0, 0, 4, 1);
-	control_box->attach(*label_slide, 0, 1, 4, 1);
-	control_box->attach(*button_prev,      0, 3, 1, 1);
-	control_box->attach(*button_playpause, 1, 3, 1, 1);
-	control_box->attach(*button_next,      2, 3, 1, 1);
-	control_box->attach(*button_remove,    3, 3, 1, 1);
-
-    control_box->show_all();
-    per_cue_controls_box.pack_start(*control_box, Gtk::PACK_SHRINK);
-    cue_control_boxes[cue] = control_box;
-
-    // signals
-    button_next->signal_clicked().connect([this, cue, current_index, label_slide]() {
-        (*current_index)++;
-        if (*current_index >= static_cast<int>(cue->slideshow_images.size()))
-            *current_index = 0;
-        auto new_file = cue->slideshow_images[*current_index];
-        label_slide->set_text(new_file);
-        playback_window->show_slide_file(new_file);
-    });
-    button_prev->signal_clicked().connect([this, cue, current_index, label_slide]() {
-        (*current_index)--;
-        if (*current_index < 0)
-            *current_index = cue->slideshow_images.size() - 1;
-        auto new_file = cue->slideshow_images[*current_index];
-        label_slide->set_text(new_file);
-        playback_window->show_slide_file(new_file);
-    });
-
-    button_playpause->signal_toggled().connect([this, button_playpause, but_play_img, but_pause_img]() {
-    if (button_playpause->get_active()) {
-		playback_window->slideshow_pause();
-		button_playpause->set_image(*Gtk::make_managed<Gtk::Image>("images/play.png"));
-    } else {
-		playback_window->slideshow_resume();
-		button_playpause->set_image(*Gtk::make_managed<Gtk::Image>("images/pause.png"));
-      	}
-    });
-
-    button_remove->signal_clicked().connect([this, cue, control_box]() {
-        playback_window->slideshow_stop();
-        per_cue_controls_box.remove(*control_box);
-        cue_control_boxes.erase(cue);
-    });
-    if (!cue->slideshow_images.empty())
-    {
-        playback_window->show_slide_file(cue->slideshow_images[0]);
+    auto it = cue_control_boxes.find(cue);
+    if (it != cue_control_boxes.end()) {
+        auto name = "cue_" + std::to_string(reinterpret_cast<uintptr_t>(cue.get()));
+        cue_controls_stack.set_visible_child(name);
     }
+
+    auto first_image = cue->slideshow_images.front();
+
+    if (cue->prewait > 0) {
+        Glib::signal_timeout().connect_once(
+            [this, first_image]() {
+                playback_window->show_slide_file(first_image);
+            },
+            cue->prewait * 1000
+        );
+    } else {
+        playback_window->show_slide_file(first_image);
+    }
+
+    std::cout << "Started slideshow cue: " << cue->name << "\n";
 }
 
 void PlaylistWindow::start_video_cue(std::shared_ptr<CueItem> cue)
 {
-    // UI controls
-    auto control_box = Gtk::make_managed<Gtk::Grid>();
-    auto label = Gtk::make_managed<Gtk::Label>("Video Cue: " + cue->name);
-	auto but_pause_img = Gtk::make_managed<Gtk::Image>("images/pause.png");
-	auto but_stop_img = Gtk::make_managed<Gtk::Image>("images/stop.png");
-	auto but_vol_down_img = Gtk::make_managed<Gtk::Image>("images/fade_down.png");
-	auto but_vol_up_img = Gtk::make_managed<Gtk::Image>("images/fade_up.png");
-	auto but_remove_img = Gtk::make_managed<Gtk::Image>("images/close.png");
-
-    auto button_playpause = Gtk::make_managed<Gtk::ToggleButton>();
-    auto button_stop = Gtk::make_managed<Gtk::Button>();
-    auto button_vol_down = Gtk::make_managed<Gtk::Button>();
-    auto button_vol_up = Gtk::make_managed<Gtk::Button>();
-    auto button_remove = Gtk::make_managed<Gtk::Button>();
-
-    button_playpause->set_image(*but_pause_img);
-    button_stop->set_image(*but_stop_img);
-    button_vol_down->set_image(*but_vol_down_img);
-    button_vol_up->set_image(*but_vol_up_img);
-    button_remove->set_image(*but_remove_img);
-        // pack buttons
-    control_box->attach(*label,           0, 0, 3, 1);
-	control_box->attach(*button_playpause,    0, 1, 1, 1);
-	control_box->attach(*button_stop,     1, 1, 1, 1);
-	control_box->attach(*button_remove,   2, 1, 1, 1);
-	control_box->attach(*button_vol_down, 1, 2, 1, 1);
-	control_box->attach(*button_vol_up,   2, 2, 1, 1);
-
-    // Signals to control the PlaybackWindow's pipeline
-    button_playpause->signal_toggled().connect([this, cue, button_playpause, but_pause_img]() {
-    if (button_playpause->get_active()) {
-        if (cue->gst_pipeline)
-            gst_element_set_state(cue->gst_pipeline, GST_STATE_PAUSED);
-         	button_playpause->set_image(*Gtk::make_managed<Gtk::Image>("images/play.png"));
-    } else {
-        if (cue->gst_pipeline)
-            gst_element_set_state(cue->gst_pipeline, GST_STATE_PLAYING);
-         	button_playpause->set_image(*Gtk::make_managed<Gtk::Image>("images/pause.png"));
-      	}
-    });
-
-    button_stop->signal_clicked().connect([this]() {
-        playback_window->stop_audio();
-    });
-
-    button_vol_down->signal_clicked().connect([this, cue]() {
-        Glib::signal_timeout().connect([cue]() -> bool {
-            gdouble vol = 1.0;
-            g_object_get(cue->gst_pipeline, "volume", &vol, nullptr);
-            vol -= 0.05;
-            if (vol <= 0.0)
-            {
-                vol = 0.0;
-                g_object_set(cue->gst_pipeline, "volume", vol, nullptr);
-                return false; // done fading
-            }
-            g_object_set(cue->gst_pipeline, "volume", vol, nullptr);
-            return true; // keep running
-        }, 100);  // every 100ms
-    });
-    
-    button_vol_up->signal_clicked().connect([this, cue]() {
-        Glib::signal_timeout().connect([cue]() -> bool {
-            gdouble vol = 0.0;
-            g_object_get(cue->gst_pipeline, "volume", &vol, nullptr);
-            vol += 0.05;
-            if (vol >= 1.0)
-            {
-                vol = 1.0;
-                g_object_set(cue->gst_pipeline, "volume", vol, nullptr);
-                return false; // done fading
-            }
-            g_object_set(cue->gst_pipeline, "volume", vol, nullptr);
-            return true; // keep running
-        }, 100);  // every 100ms
-    });
-
-    button_remove->signal_clicked().connect([this, cue, control_box]() {
-        playback_window->stop_audio();
-        per_cue_controls_box.remove(*control_box);
-        cue_control_boxes.erase(cue);
-    });
-
-    control_box->show_all();
-    per_cue_controls_box.pack_start(*control_box, Gtk::PACK_SHRINK);
-    cue_control_boxes[cue] = control_box;
-
-    auto name = "cue_" + std::to_string(reinterpret_cast<uintptr_t>(cue.get()));
-    cue_controls_stack.set_visible_child(name);
-
     if (!cue) return;
 
-    if (cue->gst_pipeline)
-    {
+    // Show control box
+    auto it = cue_control_boxes.find(cue);
+    if (it != cue_control_boxes.end()) {
+        auto name = "cue_" + std::to_string(reinterpret_cast<uintptr_t>(cue.get()));
+        cue_controls_stack.set_visible_child(name);
+    }
+
+    // Reset pipeline if needed
+    if (cue->gst_pipeline) {
         gst_element_set_state(cue->gst_pipeline, GST_STATE_NULL);
         gst_object_unref(cue->gst_pipeline);
     }
+
+    // Setup pipeline
     cue->gst_pipeline = gst_element_factory_make("playbin", nullptr);
-    gtk_sink = gst_element_factory_make("gtksink", "gtksink");
-    GstElement* audio_sink = gst_element_factory_make("autoaudiosink", "audiosink");
+    auto gtk_sink = gst_element_factory_make("gtksink", "gtksink");
+    auto audio_sink = gst_element_factory_make("autoaudiosink", "audiosink");
+
     g_object_set(cue->gst_pipeline,
                  "video-sink", gtk_sink,
                  "audio-sink", audio_sink,
                  nullptr);
-    // Get the GtkWidget from gtksink and add to container
+
+    // Extract GtkWidget from gtksink and embed
     GtkWidget* sink_widget = nullptr;
     g_object_get(gtk_sink, "widget", &sink_widget, nullptr);
-    if (sink_widget)
-    {
+    if (sink_widget) {
         auto cpp_widget = Glib::wrap(GTK_WIDGET(sink_widget));
         playback_window->set_video_container_content(*cpp_widget);
-    }
-    else
-    {
+    } else {
         std::cerr << "gtksink widget is null!" << std::endl;
     }
-
-    // Hook bus for sync handling (may not be needed with gtksink)
-    GstBus* bus = gst_element_get_bus(cue->gst_pipeline);
-    gst_bus_set_sync_handler(bus, bus_sync_handler, this, nullptr);
-    gst_object_unref(bus);
 
     g_object_set(cue->gst_pipeline, "uri", ("file://" + cue->path_or_command).c_str(), nullptr);
     g_object_set(cue->gst_pipeline, "volume", 1.0, nullptr);
 
-    if (cue->prewait > 0) {
-        Glib::signal_timeout().connect_once(
-            [this, cue]() {
-    			gst_element_set_state(cue->gst_pipeline, GST_STATE_PLAYING);
-            },
-            cue->prewait * 1000 // milliseconds
-        );
-    } else {
-    	gst_element_set_state(cue->gst_pipeline, GST_STATE_PLAYING);
-    }
-
+    // Hook up bus for EOS
+    GstBus* bus = gst_element_get_bus(cue->gst_pipeline);
     gst_bus_add_signal_watch(bus);
 
     g_signal_connect(bus, "message", G_CALLBACK(+[](
@@ -587,11 +627,26 @@ void PlaylistWindow::start_video_cue(std::shared_ptr<CueItem> cue)
         if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_EOS) {
             auto* self = static_cast<PlaylistWindow*>(user_data);
             Glib::signal_idle().connect_once([self]() {
+                std::cout << "Setting Fallback Pic: " << self->fallback_image_path << std::endl;
+                self->playback_window->set_fallback_image(self->fallback_image_path); // or use a member fallback_slide_path
                 self->on_cue_finished();
             });
         }
     }), this);
     gst_object_unref(bus);
+
+    // Play with optional delay
+    if (cue->prewait > 0) {
+        Glib::signal_timeout().connect_once(
+            [cue]() {
+                gst_element_set_state(cue->gst_pipeline, GST_STATE_PLAYING);
+            },
+            cue->prewait * 1000
+        );
+    } else {
+        gst_element_set_state(cue->gst_pipeline, GST_STATE_PLAYING);
+    }
+
     std::cout << "Started video cue: " << cue->path_or_command << "\n";
 }
 
@@ -612,124 +667,40 @@ void PlaylistWindow::start_command_cue(std::shared_ptr<CueItem> cue) {
 
 void PlaylistWindow::start_audio_cue(std::shared_ptr<CueItem> cue)
 {
-    auto control_box = Gtk::make_managed<Gtk::Grid>();
-    // build cue controls
-    auto label = Gtk::make_managed<Gtk::Label>("Audio Cue: " + cue->name);
-	auto but_pause_img = Gtk::make_managed<Gtk::Image>("images/pause.png");
-	auto but_stop_img = Gtk::make_managed<Gtk::Image>("images/stop.png");
-	auto but_vol_down_img = Gtk::make_managed<Gtk::Image>("images/fade_down.png");
-	auto but_vol_up_img = Gtk::make_managed<Gtk::Image>("images/fade_up.png");
-	auto but_remove_img = Gtk::make_managed<Gtk::Image>("images/close.png");
+    if (!cue)
+        return;
 
-    auto button_playpause = Gtk::make_managed<Gtk::ToggleButton>();
-    auto button_stop = Gtk::make_managed<Gtk::Button>();
-    auto button_vol_down = Gtk::make_managed<Gtk::Button>();
-    auto button_vol_up = Gtk::make_managed<Gtk::Button>();
-    auto button_remove = Gtk::make_managed<Gtk::Button>();
+    // Show existing controls
+    auto it = cue_control_boxes.find(cue);
+    if (it != cue_control_boxes.end()) {
+        auto name = "cue_" + std::to_string(reinterpret_cast<uintptr_t>(cue.get()));
+        cue_controls_stack.set_visible_child(name);
+    }
 
-    button_playpause->set_image(*but_pause_img);
-    button_stop->set_image(*but_stop_img);
-    button_vol_down->set_image(*but_vol_down_img);
-    button_vol_up->set_image(*but_vol_up_img);
-    button_remove->set_image(*but_remove_img);
-
-    control_box->attach(*label,           0, 0, 3, 1);
-	control_box->attach(*button_playpause,    0, 1, 1, 1);
-	control_box->attach(*button_stop,     1, 1, 1, 1);
-	control_box->attach(*button_remove,   2, 1, 1, 1);
-	control_box->attach(*button_vol_down, 1, 2, 1, 1);
-	control_box->attach(*button_vol_up,   2, 2, 1, 1);
-
-    // signals
-    button_playpause->signal_toggled().connect([this, cue, button_playpause, but_pause_img]() {
-    if (button_playpause->get_active()) {
-        if (cue->gst_pipeline)
-            gst_element_set_state(cue->gst_pipeline, GST_STATE_PAUSED);
-         	button_playpause->set_image(*Gtk::make_managed<Gtk::Image>("images/play.png"));
-    } else {
-        if (cue->gst_pipeline)
-            gst_element_set_state(cue->gst_pipeline, GST_STATE_PLAYING);
-         	button_playpause->set_image(*Gtk::make_managed<Gtk::Image>("images/pause.png"));
-      	}
-    });
-    
-    button_stop->signal_clicked().connect([this, cue]() {
-        if (cue->gst_pipeline)
-            gst_element_set_state(cue->gst_pipeline, GST_STATE_NULL);
-    });
-    
-    button_vol_down->signal_clicked().connect([this, cue]() {
-        Glib::signal_timeout().connect([cue]() -> bool {
-            gdouble vol = 1.0;
-            g_object_get(cue->gst_pipeline, "volume", &vol, nullptr);
-            vol -= 0.05;
-            if (vol <= 0.0)
-            {
-                vol = 0.0;
-                g_object_set(cue->gst_pipeline, "volume", vol, nullptr);
-                return false; // done fading
-            }
-            g_object_set(cue->gst_pipeline, "volume", vol, nullptr);
-            return true; // keep running
-        }, 100);  // every 100ms
-    });
-    
-    button_vol_up->signal_clicked().connect([this, cue]() {
-        Glib::signal_timeout().connect([cue]() -> bool {
-            gdouble vol = 0.0;
-            g_object_get(cue->gst_pipeline, "volume", &vol, nullptr);
-            vol += 0.05;
-            if (vol >= 1.0)
-            {
-                vol = 1.0;
-                g_object_set(cue->gst_pipeline, "volume", vol, nullptr);
-                return false; // done fading
-            }
-            g_object_set(cue->gst_pipeline, "volume", vol, nullptr);
-            return true; // keep running
-        }, 100);  // every 100ms
-    });
-
-    button_remove->signal_clicked().connect([this, cue, control_box]() {
-        if (cue->gst_pipeline)
-            gst_element_set_state(cue->gst_pipeline, GST_STATE_NULL);
-    
-        // remove from GUI
-        per_cue_controls_box.remove(*control_box);
-    
-        // also remove from map
-        cue_control_boxes.erase(cue);
-    });
-
-    control_box->show_all();
-    per_cue_controls_box.pack_start(*control_box, Gtk::PACK_SHRINK);
-
-    // store for later cleanup
-    cue_control_boxes[cue] = control_box;
-
-    auto name = "cue_" + std::to_string(reinterpret_cast<uintptr_t>(active_cue.get()));
-    cue_controls_stack.set_visible_child(name);
-
-    if (!cue) return;
-
-    if (cue->gst_pipeline)
-    {
+    // Clean up old pipeline
+    if (cue->gst_pipeline) {
         gst_element_set_state(cue->gst_pipeline, GST_STATE_NULL);
         gst_object_unref(cue->gst_pipeline);
     }
+
+    // Create pipeline
     cue->gst_pipeline = gst_element_factory_make("playbin", nullptr);
     g_object_set(cue->gst_pipeline, "uri", ("file://" + cue->path_or_command).c_str(), nullptr);
     g_object_set(cue->gst_pipeline, "volume", 1.0, nullptr);
+
+    // Handle prewait
     if (cue->prewait > 0) {
         Glib::signal_timeout().connect_once(
-            [this, cue]() {
-    			gst_element_set_state(cue->gst_pipeline, GST_STATE_PLAYING);
+            [cue]() {
+                gst_element_set_state(cue->gst_pipeline, GST_STATE_PLAYING);
             },
-            cue->prewait * 1000 // milliseconds
+            cue->prewait * 1000
         );
     } else {
-    	gst_element_set_state(cue->gst_pipeline, GST_STATE_PLAYING);
+        gst_element_set_state(cue->gst_pipeline, GST_STATE_PLAYING);
     }
+
+    // Setup bus for EOS
     GstBus* bus = gst_element_get_bus(cue->gst_pipeline);
     gst_bus_add_signal_watch(bus);
 
@@ -743,7 +714,42 @@ void PlaylistWindow::start_audio_cue(std::shared_ptr<CueItem> cue)
         }
     }), this);
     gst_object_unref(bus);
+
     std::cout << "Started audio cue: " << cue->path_or_command << "\n";
+}
+
+void PlaylistWindow::remove_cue(std::shared_ptr<CueItem> cue)
+{
+    if (!cue) return;
+
+    // 1. stop playback if active
+    if (cue->gst_pipeline) {
+        gst_element_set_state(cue->gst_pipeline, GST_STATE_NULL);
+        gst_object_unref(cue->gst_pipeline);
+        cue->gst_pipeline = nullptr;
+    }
+
+    // 2. remove its controls from per_cue_controls_box
+    auto it = cue_control_boxes.find(cue);
+    if (it != cue_control_boxes.end()) {
+        per_cue_controls_box.remove(*it->second);
+        cue_control_boxes.erase(it);
+    }
+
+    // 3. remove from cue_items and model
+    auto iter = std::find(cue_items.begin(), cue_items.end(), cue);
+    if (iter != cue_items.end()) {
+        int index = std::distance(cue_items.begin(), iter);
+        cue_items.erase(iter);
+
+        auto store_iter = cue_store->children().begin();
+        std::advance(store_iter, index);
+        if (store_iter != cue_store->children().end())
+            cue_store->erase(store_iter);
+    }
+
+    if (active_cue == cue)
+        active_cue.reset();
 }
 
 bool PlaylistWindow::on_treeview_key_press(GdkEventKey* event)
@@ -756,31 +762,8 @@ bool PlaylistWindow::on_treeview_key_press(GdkEventKey* event)
             int index = std::distance(cue_store->children().begin(), iter);
             if (index >= 0 && index < static_cast<int>(cue_items.size()))
             {
-                auto cue = cue_items[index]; // capture the cue pointer
-    
-                // 1. stop playback if active
-                if (cue->gst_pipeline)
-                {
-                    gst_element_set_state(cue->gst_pipeline, GST_STATE_NULL);
-                    gst_object_unref(cue->gst_pipeline);
-                    cue->gst_pipeline = nullptr;
-                }
-    
-                // 2. remove its controls from per_cue_controls_box
-                auto it = cue_control_boxes.find(cue);
-                if (it != cue_control_boxes.end())
-                {
-                    per_cue_controls_box.remove(*it->second);
-                    cue_control_boxes.erase(it);
-                }
-    
-                // 3. remove from data and liststore
-                cue_items.erase(cue_items.begin() + index);
-                cue_store->erase(iter);
-    
-                // optionally clear active_cue if you wish:
-                if (active_cue == cue)
-                    active_cue.reset();
+                auto cue = cue_items[index];
+                remove_cue(cue);
             }
         }
         return true;

@@ -103,7 +103,8 @@ protected:
     void add_video_cue();
     void add_slideshow_cue();
     void add_control_cue();
-
+    void remove_cue(std::shared_ptr<CueItem> cue);
+    
     static GstBusSyncReply bus_sync_handler(GstBus* bus, GstMessage* message, gpointer user_data);
 	void on_cue_finished();
 	int get_cue_index(const std::shared_ptr<CueItem>& cue) const;
