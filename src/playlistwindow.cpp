@@ -109,7 +109,7 @@ PlaylistWindow::PlaylistWindow(std::shared_ptr<PlaybackWindow> pw)
     item_add_audio.signal_activate().connect(sigc::mem_fun(*this, &PlaylistWindow::add_audio_cue));
     item_add_video.signal_activate().connect(sigc::mem_fun(*this, &PlaylistWindow::add_video_cue));
     item_add_slideshow.signal_activate().connect(sigc::mem_fun(*this, &PlaylistWindow::add_slideshow_cue));
-    item_add_control.signal_activate().connect(sigc::mem_fun(*this, &PlaylistWindow::add_control_cue));
+    item_add_control.signal_activate().connect(sigc::mem_fun(*this, &PlaylistWindow::add_command_cue));
 
 	cue_store->signal_rows_reordered().connect(sigc::mem_fun(*this, &PlaylistWindow::on_rows_reordered));
 
@@ -160,11 +160,11 @@ void PlaylistWindow::add_audio_cue()
         auto control_box = Gtk::make_managed<Gtk::Grid>();
 
         auto label = Gtk::make_managed<Gtk::Label>("Audio Cue: " + cue->name);
-        auto but_pause_img = Gtk::make_managed<Gtk::Image>("images/pause.png");
-        auto but_stop_img = Gtk::make_managed<Gtk::Image>("images/stop.png");
-        auto but_vol_down_img = Gtk::make_managed<Gtk::Image>("images/fade_down.png");
-        auto but_vol_up_img = Gtk::make_managed<Gtk::Image>("images/fade_up.png");
-        auto but_remove_img = Gtk::make_managed<Gtk::Image>("images/close.png");
+        auto but_pause_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/pause.png");
+        auto but_stop_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/stop.png");
+        auto but_vol_down_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/fade_down.png");
+        auto but_vol_up_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/fade_up.png");
+        auto but_remove_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/close.png");
 
         auto button_playpause = Gtk::make_managed<Gtk::ToggleButton>();
         auto button_stop = Gtk::make_managed<Gtk::Button>();
@@ -277,11 +277,11 @@ void PlaylistWindow::add_video_cue()
     auto control_box = Gtk::make_managed<Gtk::Grid>();
 
     auto label = Gtk::make_managed<Gtk::Label>("Video Cue: " + cue->name);
-    auto but_pause_img = Gtk::make_managed<Gtk::Image>("images/pause.png");
-    auto but_stop_img = Gtk::make_managed<Gtk::Image>("images/stop.png");
-    auto but_vol_down_img = Gtk::make_managed<Gtk::Image>("images/fade_down.png");
-    auto but_vol_up_img = Gtk::make_managed<Gtk::Image>("images/fade_up.png");
-    auto but_remove_img = Gtk::make_managed<Gtk::Image>("images/close.png");
+    auto but_pause_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/pause.png");
+    auto but_stop_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/stop.png");
+    auto but_vol_down_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/fade_down.png");
+    auto but_vol_up_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/fade_up.png");
+    auto but_remove_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/close.png");
 
     auto button_playpause = Gtk::make_managed<Gtk::ToggleButton>();
     auto button_stop = Gtk::make_managed<Gtk::Button>();
@@ -317,7 +317,8 @@ void PlaylistWindow::add_video_cue()
     });
 
     button_stop->signal_clicked().connect([this]() {
-        playback_window->stop_audio();  // This seems like a misnamed method
+        playback_window->stop_playback();  // This seems like a misnamed method
+        
     });
 
     button_vol_down->signal_clicked().connect([cue]() {
@@ -392,11 +393,11 @@ void PlaylistWindow::add_slideshow_cue()
         label_slide->set_text("(No slides)");
 
     // Images
-    auto but_next_img = Gtk::make_managed<Gtk::Image>("images/fwd.png");
-    auto but_play_img = Gtk::make_managed<Gtk::Image>("images/play.png");
-    auto but_pause_img = Gtk::make_managed<Gtk::Image>("images/pause.png");
-    auto but_prev_img = Gtk::make_managed<Gtk::Image>("images/prev.png");
-    auto but_remove_img = Gtk::make_managed<Gtk::Image>("images/close.png");
+    auto but_next_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/fwd.png");
+    auto but_play_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/play.png");
+    auto but_pause_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/pause.png");
+    auto but_prev_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/prev.png");
+    auto but_remove_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/close.png");
 
     // Buttons
     auto button_next = Gtk::make_managed<Gtk::Button>();
@@ -454,7 +455,6 @@ void PlaylistWindow::add_slideshow_cue()
     control_box->show_all();
     per_cue_controls_box.pack_start(*control_box, Gtk::PACK_SHRINK);
     cue_control_boxes[cue] = control_box;
-
     // Add to model
     auto row = *(cue_store->append());
     row[cue_columns.name] = cue->name;
@@ -464,39 +464,68 @@ void PlaylistWindow::add_slideshow_cue()
     row[cue_columns.postwait] = Glib::ustring::format(cue->postwait / 60, ":", cue->postwait % 60);
 }
 
-void PlaylistWindow::add_control_cue() {
-    Gtk::Dialog dialog("Add Control Cue", *this);
-    Gtk::Entry command_entry;
-    command_entry.set_placeholder_text("Enter Unix command");
+void PlaylistWindow::add_command_cue()
+{
+    CuePropertiesDialog dlg(*this, CuePropertiesDialog::CueType::Control);
+    CuePropertiesDialog::Result res;
+    if (!dlg.run_and_get_result(res))
+        return;
 
-    dialog.get_content_area()->pack_start(command_entry);
-    dialog.add_button("_Cancel", Gtk::RESPONSE_CANCEL);
-    dialog.add_button("_OK", Gtk::RESPONSE_OK);
+    if (res.file_or_command.empty())
+        return; // no command entered
 
-    dialog.show_all();
+    auto cue = std::make_shared<CueItem>(
+        CueItem::Type::Control,
+        res.name.empty() ? res.file_or_command.substr(0, 20) : res.name,
+        res.file_or_command,
+        res.prewait_seconds,
+        res.postwait_seconds,
+        0,
+        res.auto_next,
+        res.immediate,
+        res.loop_forever,
+        res.last_frame
+    );
 
-    auto response = dialog.run();
+    cue_items.push_back(cue);
 
-    if (response == Gtk::RESPONSE_OK) {
-        std::string command = command_entry.get_text();
+    //Create UI
+    auto control_box = Gtk::make_managed<Gtk::Grid>();
+    auto label = Gtk::make_managed<Gtk::Label>("Command: " + cue->name);
+    auto label_command = Gtk::make_managed<Gtk::Label>();
+    
+    auto but_play_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/play.png");
+    auto but_remove_img = Gtk::make_managed<Gtk::Image>(std::string(STAGESHOW_DATA_DIR) + "/images/close.png");
+    auto button_play = Gtk::make_managed<Gtk::Button>();
+    auto button_remove = Gtk::make_managed<Gtk::Button>();
+    button_play->set_image(*but_play_img);
+    button_remove->set_image(*but_remove_img);
 
-        auto cue = std::make_shared<CueItem>(
-            CueItem::Type::Control,
-            command.substr(0,20),
-            command,
-            0, 0, 0, false, false, false, false
-        );
+    control_box->attach(*label,         0, 0, 4, 1);
+    control_box->attach(*label_command, 0, 1, 4, 1);
+    control_box->attach(*button_play,   0, 2, 1, 1);
+    control_box->attach(*button_remove, 1, 2, 1, 1);
+    //Signals
+    button_play->signal_clicked().connect([this, cue]() {
+        std::system(cue->path_or_command.c_str());    
+    });
+        
+    button_remove->signal_clicked().connect([this, cue]() {
+        remove_cue(cue);
+    });
 
-        cue_items.push_back(cue);
-
-        auto row = *(cue_store->append());
-        row[cue_columns.name] = cue->name;
-        row[cue_columns.prewait] = "00:00";
-        row[cue_columns.action_text] = "—";
-        row[cue_columns.action_progress] = 0;
-        row[cue_columns.postwait] = "00:00";
-    }
+    control_box->show_all();
+    per_cue_controls_box.pack_start(*control_box, Gtk::PACK_SHRINK);
+    cue_control_boxes[cue] = control_box;
+    // Add to model
+    auto row = *(cue_store->append());
+    row[cue_columns.name] = cue->name;
+    row[cue_columns.prewait] = Glib::ustring::format(cue->prewait / 60, ":", cue->prewait % 60);
+    row[cue_columns.action_text] = "Control";
+    row[cue_columns.action_progress] = 0;
+    row[cue_columns.postwait] = Glib::ustring::format(cue->postwait / 60, ":", cue->postwait % 60);
 }
+
 
 void PlaylistWindow::on_rows_reordered(const Gtk::TreeModel::Path& path, const Gtk::TreeModel::iterator& iter, int* new_order)
 {
@@ -542,7 +571,7 @@ void PlaylistWindow::on_go_clicked()
         }
         else if (active_cue->type == CueItem::Type::Control)
         {
-            system(active_cue->path_or_command.c_str());
+            start_video_cue(active_cue);
         }
     }
 }
@@ -627,8 +656,9 @@ void PlaylistWindow::start_video_cue(std::shared_ptr<CueItem> cue)
         if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_EOS) {
             auto* self = static_cast<PlaylistWindow*>(user_data);
             Glib::signal_idle().connect_once([self]() {
-                std::cout << "Setting Fallback Pic: " << self->fallback_image_path << std::endl;
+//            if(!){            //Check for Static Frame on Playback
                 self->playback_window->set_fallback_image(self->fallback_image_path); // or use a member fallback_slide_path
+//            }
                 self->on_cue_finished();
             });
         }
@@ -652,18 +682,35 @@ void PlaylistWindow::start_video_cue(std::shared_ptr<CueItem> cue)
 
 void PlaylistWindow::start_command_cue(std::shared_ptr<CueItem> cue) {
     if (!cue) return;
-    // Run shell command using std::system (or async if desired)
-    std::string command = cue->path_or_command;
-    if (!command.empty()) {
-        std::cerr << "Running command cue: " << command << std::endl;
-        std::system(command.c_str());
+    // Show control box
+    auto it = cue_control_boxes.find(cue);
+    if (it != cue_control_boxes.end()) {
+        auto name = "cue_" + std::to_string(reinterpret_cast<uintptr_t>(cue.get()));
+        cue_controls_stack.set_visible_child(name);
+    }    
+    // Play with optional delay
+    if (cue->prewait > 0) {
+        Glib::signal_timeout().connect_once(
+            [cue]() {
+                std::string command = cue->path_or_command;
+                if (!command.empty()) {
+                    std::cerr << "Running command cue: " << command << std::endl;
+                    std::system(command.c_str());
+                }
+            },
+            cue->prewait * 1000
+        );
+    } else {
+        gst_element_set_state(cue->gst_pipeline, GST_STATE_PLAYING);
     }
+    std::cout << "Started command cue: " << cue->path_or_command << "\n";
     // Trigger cue finished after postwait
     Glib::signal_timeout().connect_once(
         sigc::mem_fun(*this, &PlaylistWindow::on_cue_finished),
         cue->postwait * 1000
     );
 }
+
 
 void PlaylistWindow::start_audio_cue(std::shared_ptr<CueItem> cue)
 {
@@ -721,6 +768,10 @@ void PlaylistWindow::start_audio_cue(std::shared_ptr<CueItem> cue)
 void PlaylistWindow::remove_cue(std::shared_ptr<CueItem> cue)
 {
     if (!cue) return;
+
+    if (cue->type == CueItem::Type::Video || cue->type == CueItem::Type::Slideshow) {
+        playback_window->set_fallback_image(fallback_image_path);
+    }
 
     // 1. stop playback if active
     if (cue->gst_pipeline) {
@@ -793,7 +844,7 @@ bool PlaylistWindow::on_treeview_key_press(GdkEventKey* event)
                 }
                 else if (active_cue->type == CueItem::Type::Control)
                 {
-                    system(active_cue->path_or_command.c_str());
+                    start_command_cue(active_cue);
                 }
 
                 // highlight next
@@ -1151,7 +1202,7 @@ void PlaylistWindow::show_fallback_image()
 {
 	std::cout << "Fallback image" << std::endl; 
     pw.video_area.hide();         // Or stop drawing video to this area
-    playback_window->show_slide_file("fallback.png");
+    playback_window->show_slide_file(std::string(STAGESHOW_DATA_DIR) + "/images/fallback.png");
 }
 
 void PlaylistWindow::on_preferences_clicked()

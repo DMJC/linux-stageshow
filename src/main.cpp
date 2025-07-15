@@ -25,7 +25,7 @@ int main(int argc, char* argv[])
 
     playlist_win->show_all();
     playback_win->show_all();
-//    countdown_win->show_all();
+    countdown_win->show_all();
 
     return app->run(*playlist_win);  // use playlist window as main
 }

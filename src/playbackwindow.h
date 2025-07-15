@@ -18,11 +18,9 @@ public:
 
 	void pause_video();
 	void resume_video();
-	void stop_video();
-
 	void pause_audio();
 	void resume_audio();
-	void stop_audio();
+	void stop_playback();
 	void audio_volume_down();
 	void audio_volume_up();
 
@@ -51,7 +49,7 @@ protected:
     sigc::connection slideshow_timer;
 	Glib::RefPtr<Gdk::Pixbuf> fallback_pixbuf_original;
 	Glib::RefPtr<Gdk::Pixbuf> current_pixbuf_original;
-	std::string fallback_image_path = "images/avcon_logo.png";
+	std::string fallback_image_path = std::string(STAGESHOW_DATA_DIR) + "/images/fallback.png";
 
     // helpers
     void show_slide(int index);

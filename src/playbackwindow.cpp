@@ -106,7 +106,7 @@ void PlaybackWindow::resume_audio() {
     if (playbin) gst_element_set_state(playbin, GST_STATE_PLAYING);
 }
 
-void PlaybackWindow::stop_audio() {
+void PlaybackWindow::stop_playback() {
     if (playbin) {
         gst_element_set_state(playbin, GST_STATE_NULL);
         gst_object_unref(playbin);

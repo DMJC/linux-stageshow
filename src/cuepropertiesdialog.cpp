@@ -53,8 +53,12 @@ CuePropertiesDialog::CuePropertiesDialog(Gtk::Window& parent, CueType type)
     if (cue_type == CueType::Audio || cue_type == CueType::Video) {
         content_area->pack_start(file_chooser, Gtk::PACK_SHRINK);
     } else if (cue_type == CueType::Control) {
+        auto command_box = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 5);
         command_entry.set_placeholder_text("Enter Unix command");
-        content_area->pack_start(command_entry, Gtk::PACK_SHRINK);
+        command_box->pack_start(*grid, Gtk::PACK_SHRINK);
+        command_box->pack_start(command_entry, Gtk::PACK_SHRINK);
+        content_area->pack_start(*command_box, Gtk::PACK_SHRINK);
+
     } else if (cue_type == CueType::Slideshow) {
         // Slideshow list
         slideshow_store = Gtk::ListStore::create(slideshow_columns);
